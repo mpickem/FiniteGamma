@@ -29,7 +29,10 @@ def alpha_xx(e,mu,Gamma,beta,Z,psi_1,psi_2):
             (e-mu)*Gamma*beta/2/np.pi * psi_2.real - \
             Gamma**2*beta/2/np.pi * psi_2.imag )
 def sigma_xy(e,mu,Gamma,beta,Z,psi_1,psi_2,psi_3):
-  pass
+  return (-Z**3)*3/(8*np.pi**2*Gamma**2) * \
+         (beta/2/np.pi**2 * psi_1.real - \
+          beta**2*Gamma/4/np.pi**3 * psi_2.real - \
+          beta**3*Gamma**2*2/(3*8*2*np.pi**4) * psi_3.real)
 
 
 # k-mesh calculation
@@ -91,24 +94,29 @@ print('calculated chemical potential:', mu_save)
 Hk_progress = Hk.size/50
 # now we can calculate some fancy properties
 # zeta functions are not broadcastable unfortunately
-sigma_value = 0.0
-alpha_value = 0.0
+sigma_xx_value = 0.0
+sigma_xy_value = 0.0
+alpha_xx_value = 0.0
 print()
 print('Calculation progress of quantities:')
 for index, eki in np.ndenumerate(Hk.flatten()):
   if (np.mod(index[0],Hk_progress) == 0):
     print(index[0]/Hk.size * 100,'%')
   # polygamma functions
-  psi_1,psi_2,_ = get_polygamma(eki,mu_save,Gamma,beta)
+  psi_1,psi_2,psi_3 = get_polygamma(eki,mu_save,Gamma,beta)
   # quantities
-  sigma_value += sigma_xx(eki,mu_save,Gamma,beta,Z, psi_1, psi_2)
-  alpha_value += alpha_xx(eki,mu_save,Gamma,beta,Z, psi_1, psi_2)
+  sigma_xx_value += sigma_xx(eki,mu_save,Gamma,beta,Z, psi_1, psi_2)
+  sigma_xy_value += sigma_xy(eki,mu_save,Gamma,beta,Z, psi_1, psi_2, psi_3)
+  alpha_xx_value += alpha_xx(eki,mu_save,Gamma,beta,Z, psi_1, psi_2)
 
-sigma_value = sigma_value/Hk.size
-alpha_value = alpha_value/Hk.size
+sigma_xx_value = sigma_xx_value/Hk.size
+sigma_xy_value = sigma_xy_value/Hk.size
+alpha_xx_value = alpha_xx_value/Hk.size
 
-print('sigma_xx: ', sigma_value)
-print('alpha_xx: ', alpha_value)
+
+print('sigma_xx: ', sigma_xx_value)
+print('sigma_xy: ', sigma_xy_value)
+print('alpha_xx: ', alpha_xx_value)
 
 print('Done.')
 print()
