@@ -36,9 +36,9 @@ def sigma_xy(e,mu,Gamma,beta,Z,psi_1,psi_2,psi_3):
 
 
 # k-mesh calculation
-kmeshx = np.linspace(0,1,20,endpoint=False)
-kmeshy = np.linspace(0,1,20,endpoint=False)
-kmeshz = np.linspace(0,1,20,endpoint=False)
+kmeshx = np.linspace(0,1,50,endpoint=False)
+kmeshy = np.linspace(0,1,50,endpoint=False)
+kmeshz = np.linspace(0,1,50,endpoint=False)
 t_hopping = 1.0
 
 # Hk calculation
@@ -46,14 +46,15 @@ Hk = -2*t_hopping * ( np.cos(kmeshx*2*np.pi)[:,None,None] + np.cos(kmeshy*2*np.p
                     + np.cos(kmeshz*2*np.pi)[None,None,:])
 
 
-n_target = 0.40 # element 0,1 # for a specific spin
-Gamma = 0.1
-beta = 20
-Z = 0.7
+n_target = 0.485 # element 0,1 # for a specific spin
+Gamma = 0.3
+beta = 100
+Z = 0.5
 
 mu_start = -100
 mu_end = 100
 mu_bisec = (mu_end+mu_start)/2
+mu_save = mu_bisec
 mu_diff = mu_end-mu_start
 
 
@@ -68,7 +69,7 @@ print('Finite Gamma calculation program')
 print()
 print('Chemical potential search:')
 
-while ( np.abs(n_target - n_bisec)  > 1e-6 ):
+while ( np.abs(n_target - n_bisec)  > 1e-7 ):
   n_bisec = np.average(occ(Hk,mu_bisec,Gamma,beta))
   mu_save = mu_bisec # we save this
   # reasoning: if the target occupation is in the acceptable range
