@@ -55,7 +55,9 @@ class Hamiltonian(object):
     self.kx = kx
     self.ky = ky
     self.kz = kz
+    self.nkp = kx*ky*kz
     self.hk = None
+    self.ndim = None
     self.__define_dim()
 
   def __define_dim(self):
@@ -109,35 +111,43 @@ class Wannier(Hamiltonian):
   def __create_hk(self):
     with open(self.fname, 'r') as f:
       first_line = f.readline()
-      nkp, ndim = map(int, first_line.split()[:2])
-      if (self.kx*self.ky*self.kz != nkp):
+      nkpfile, ndimfile = map(int, first_line.split()[:2])
+      if (self.nkp != nkpfile):
         print('Differing number of k-points in Wannier File.')
+        sys.exit()
+      elif (self.ndim != ndimfile):
+        print('Differing number of bands in Wannier File.')
         sys.exit()
       else:
         pass
+      # extract hk now
       self.hk = None
 
 
 class FGProblem(object):
   def __init__(self, response, hk, ntarget):
-    self.response = response # FiniteGamma object
+    self.resp = response # FiniteGamma object
     self.hk = hk # hamiltonian array
     self.ntarget = ntarget # target occupation number
     self.mu = None
     self.nbisec = None
+    self.sxx = None
+    self.sxy = None
+    self.axx = None
+    self.axy = None
 
   def findmu(self, mu_start = -100, mu_end = 100, threshold = 1e-7, progress=False):
     mu_bisec = (mu_start+mu_end)/2
     mu_save = mu_bisec # we save this
 
-    n_bisec = np.average(resp.occ(self.hk, mu_bisec))
-    n_start = np.average(resp.occ(self.hk, mu_start))
-    n_end = np.average(resp.occ(self.hk, mu_end))
+    n_bisec = np.average(self.resp.occ(self.hk, mu_bisec))
+    n_start = np.average(self.resp.occ(self.hk, mu_start))
+    n_end = np.average(self.resp.occ(self.hk, mu_end))
 
     iterator = 0
 
     while ( np.abs(self.ntarget - n_bisec)  > threshold ):
-      n_bisec = np.average(resp.occ(tb.hk, mu_bisec))
+      n_bisec = np.average(self.resp.occ(self.hk, mu_bisec))
       mu_save = mu_bisec # we save this
       # reasoning: if the target occupation is in the acceptable range
       # we afterwards immediately adjust the mu again
@@ -158,67 +168,54 @@ class FGProblem(object):
     self.nbisec = n_bisec
 
   def calcprop(self, progress=False):
-    Hk_progress = self.hk.size//50
-    # now we can calculate some fancy properties
-    # zeta functions are not broadcastable unfortunately
-    sigma_xx_value = 0.0
-    sigma_xy_value = 0.0
-    alpha_xx_value = 0.0
-
+    sxx = sxy = axx = 0.0
+    Hk_progress = self.hk.size/50
     for index, eki in np.ndenumerate(self.hk.flatten()):
       if (progress and (np.mod(index[0],Hk_progress) == 0)):
         print(index[0]/self.hk.size * 100,'%')
-      # polygamma functions
-      psi_1,psi_2,psi_3 = self.response.get_polygamma(eki,self.mu)
-      # quantities
-      sigma_xx_value += self.response.sigma_xx(eki,self.mu,psi_1, psi_2)
-      sigma_xy_value += self.response.sigma_xy(eki,self.mu,psi_1, psi_2, psi_3)
-      alpha_xx_value += self.response.alpha_xx(eki,self.mu,psi_1, psi_2)
+      p1,p2,p3 = self.resp.get_polygamma(eki, self.mu)
+      sxx += self.resp.sigma_xx(eki, self.mu, p1, p2)
+      sxy += self.resp.sigma_xy(eki, self.mu, p1, p2, p3)
+      axx += self.resp.alpha_xx(eki, self.mu, p1, p2)
+    self.sxx = sxx/self.hk.size
+    self.sxy = sxy/self.hk.size
+    self.axx = axx/self.hk.size
 
-    sigma_xx_value = sigma_xx_value/self.hk.size
-    sigma_xy_value = sigma_xy_value/self.hk.size
-    alpha_xx_value = alpha_xx_value/self.hk.size
+if __name__ == '__main__':
+  print('Finite Gamma calculation program')
+  print()
 
-    return sigma_xx_value, sigma_xy_value, alpha_xx_value
+  # wann = Wannier('SVO_k20.hk', 20, 20, 20)
+  # sys.exit()
 
+  # tight binding object - automatically creates .hk array
+  tb = TightBinding(t = 0.1, kx=20, ky=20, kz=1)
 
+  beta_list = []
+  mu = []
+  sxx = []
+  sxy = []
+  axx = []
 
-print('Finite Gamma calculation program')
-print()
+  # temperature loop
+  for i in xrange(100,1,-1):
+    beta = i/10
+    beta_list.append(beta)
+    print(beta)
+    # response object
+    resp = FiniteGamma(Gamma=0.1, beta=beta, Z=0.7)
+    # class which combines the resp + hamiltonian
+    comb = FGProblem(resp, tb.hk, ntarget = 0.6)
 
+    # find chemical potential
+    comb.findmu(mu_start=-10, mu_end=10, threshold=1e-10)
+    # calculatie properties
+    comb.calcprop(progress=False)
 
-# wann = Wannier('SVO_k20.hk', 20, 20, 20)
-# sys.exit()
+    mu.append(comb.mu)
+    sxx.append(comb.sxx)
+    sxy.append(comb.sxy)
+    axx.append(comb.axx)
 
-# tight binding object - automatically creates .hk array
-tb = TightBinding(t = 0.1, kx=80, ky=80, kz=1)
-
-beta_list = []
-mu = []
-sxx = []
-sxy = []
-axx = []
-
-# temperature loop
-for i in xrange(1000,1,-1):
-  beta = i/10
-  beta_list.append(beta)
-  print(beta)
-  # response object
-  resp = FiniteGamma(Gamma = 0.1, beta = beta, Z = 0.7)
-  # class which combines the resp + hamiltonian
-  comb = FGProblem(resp, tb.hk, ntarget = 0.6)
-
-  # find chemical potential
-  comb.findmu()
-  mu.append(comb.mu)
-
-  # calculatie properties
-  sxx_tmp, sxy_tmp, axx_tmp = comb.calcprop(progress=False)
-
-  sxx.append(sxx_tmp)
-  sxy.append(sxy_tmp)
-  axx.append(axx_tmp)
-
-np.savetxt('results.dat', np.c_[beta_list,mu,sxx,sxy,axx])
-print('Done.')
+  np.savetxt('results.dat', np.c_[beta_list,mu,sxx,sxy,axx])
+  print('Done.')
