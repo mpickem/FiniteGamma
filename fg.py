@@ -181,7 +181,7 @@ class FGProblem(object):
     self.sxy = sxy/self.hk.size
     self.axx = axx/self.hk.size
 
-if __name__ == '__main__':
+def main():
   print('Finite Gamma calculation program')
   print()
 
@@ -189,33 +189,43 @@ if __name__ == '__main__':
   # sys.exit()
 
   # tight binding object - automatically creates .hk array
-  tb = TightBinding(t = 0.1, kx=20, ky=20, kz=1)
+  tb = TightBinding(t = 2, kx=20, ky=20, kz=1)
 
-  beta_list = []
-  mu = []
-  sxx = []
-  sxy = []
-  axx = []
+  for n in xrange(1,10):
+    nparticles = n/10
 
-  # temperature loop
-  for i in xrange(100,1,-1):
-    beta = i/10
-    beta_list.append(beta)
-    print(beta)
-    # response object
-    resp = FiniteGamma(Gamma=0.1, beta=beta, Z=0.7)
-    # class which combines the resp + hamiltonian
-    comb = FGProblem(resp, tb.hk, ntarget = 0.6)
+    beta_list = []
+    mu = []
+    sxx = []
+    sxy = []
+    axx = []
 
-    # find chemical potential
-    comb.findmu(mu_start=-10, mu_end=10, threshold=1e-10)
-    # calculatie properties
-    comb.calcprop(progress=False)
+    # temperature loop
+    for i in xrange(100,0,-1):
+      beta = i
+      beta_list.append(beta)
+      print(beta)
+      # response object
+      resp = FiniteGamma(Gamma=0.3, beta=beta, Z=0.5)
+      # class which combines the resp + hamiltonian
+      comb = FGProblem(resp, tb.hk, ntarget = nparticles)
 
-    mu.append(comb.mu)
-    sxx.append(comb.sxx)
-    sxy.append(comb.sxy)
-    axx.append(comb.axx)
+      # find chemical potential
+      comb.findmu(mu_start=-10, mu_end=10, threshold=1e-8)
+      # calculatie properties
+      comb.calcprop(progress=False)
 
-  np.savetxt('results.dat', np.c_[beta_list,mu,sxx,sxy,axx])
+      mu.append(comb.mu)
+      sxx.append(comb.sxx)
+      sxy.append(comb.sxy)
+      axx.append(comb.axx)
+
+    np.savetxt('results_{:02}.dat'.format(n), np.c_[beta_list,mu,sxx,sxy,axx])
   print('Done.')
+
+if __name__ == '__main__':
+  try:
+    main()
+  except KeyboardInterrupt:
+    print('Killed by user')
+    sys.exit(0)
