@@ -12,6 +12,7 @@ class FiniteGamma(object):
     self.beta = beta
     self.Z = Z
 
+  # this is broadcastable
   def occ(self,e,mu):
     return 0.5 + digamma(0.5 + self.beta/2.0/np.pi*(self.Gamma - 1j*(e-mu))).imag/np.pi
 
@@ -19,6 +20,8 @@ class FiniteGamma(object):
   # since it only accepts real numbers
   # psi_n = zeta(n+1) * n! * (-1)**(n+1)
   # this zeta is the Hurwitz zeta function
+
+  # these are not broadcastable
   def get_polygamma(self,e,mu):
     psi_1 = zeta(2,0.5+self.beta/2/np.pi*(self.Gamma+1j*(e-mu)))
     psi_2 = zeta(3,0.5+self.beta/2/np.pi*(self.Gamma+1j*(e-mu))) * (-2)
@@ -47,22 +50,32 @@ class FiniteGamma(object):
 
 
 class TightBinding(object):
+  htype = 'Tightbinding'
   def __init__(self, t, kx, ky=1, kz=1):
     self.t = t
     self.kx = kx
     self.ky = ky
     self.kz = kz
     self.hk = None
+    self.__define_dim()
+
+  def __define_dim(self):
+    if self.ky == 1 and self.kz == 1:
+      self.ndim = 1
+    elif self.kz == 1:
+      self.ndim = 2
+    else:
+      self.ndim = 3
 
   def create_hk(self):
-    if self.ky == 1 and self.kz == 1:
-      self.create_1d_hk()
-    elif self.kz == 1:
-      self.create_2d_hk()
+    if self.ndim == 1:
+      self.__create_1d_hk()
+    elif self.ndim == 2:
+      self.__create_2d_hk()
     else:
-      self.create_3d_hk()
+      self.__create_3d_hk()
 
-  def create_3d_hk(self):
+  def __create_3d_hk(self):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.kmeshy = np.linspace(0,1,self.ky,endpoint=False)
     self.kmeshz = np.linspace(0,1,self.kz,endpoint=False)
@@ -70,17 +83,39 @@ class TightBinding(object):
                           + np.cos(self.kmeshy*2*np.pi)[None,:,None] \
                           + np.cos(self.kmeshz*2*np.pi)[None,None,:] )
 
-  def create_2d_hk(self):
+  def __create_2d_hk(self):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.kmeshy = np.linspace(0,1,self.ky,endpoint=False)
     self.hk = -2*self.t * ( np.cos(self.kmeshx*2*np.pi)[:,None] \
                           + np.cos(self.kmeshy*2*np.pi)[None,:] )
 
-  def create_1d_hk(self):
+  def __create_1d_hk(self):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.hk = -2*self.t * ( np.cos(self.kmeshx*2*np.pi) )
 
-class Combination(object):
+class Wannier(object):
+  htype = 'Wannier'
+  def __init__(self, fname, kx, ky, kz):
+    self.fname = fname
+    self.kx = kx
+    self.ky = ky
+    self.kz = kz
+    self.hk = None
+    self.create_hk()
+
+  def create_hk(self):
+    with open(self.fname, 'r') as f:
+      first_line = f.readline()
+      nkp, ndim = map(int, first_line.split()[:2])
+      if (self.kx*self.ky*self.kz != nkp):
+        print('Differing number of k-points in Wannier File.')
+        sys.exit()
+      else:
+        pass
+      self.hk = None
+
+
+class FGProblem(object):
   def __init__(self, response, hk, ntarget):
     self.response = response # FiniteGamma object
     self.hk = hk # hamiltonian array
@@ -148,8 +183,12 @@ class Combination(object):
 print('Finite Gamma calculation program')
 print()
 
+
+# wann = Wannier('SVO_k20.hk', 20, 20, 20)
+# sys.exit()
+
 # tight binding object
-tb = TightBinding(t = 0.1, kx=80, ky=80, kz=1)
+tb = TightBinding(t = 0.1, kx=80, ky=1, kz=1)
 tb.create_hk()
 
 beta_list = []
@@ -166,7 +205,7 @@ for i in xrange(1000,1,-1):
   # response object
   resp = FiniteGamma(Gamma = 0.1, beta = beta, Z = 0.7)
   # class which combines the resp + hamiltonian
-  comb = Combination(resp, tb.hk, ntarget = 0.6)
+  comb = FGProblem(resp, tb.hk, ntarget = 0.6)
 
   # find chemical potential
   comb.findmu()
