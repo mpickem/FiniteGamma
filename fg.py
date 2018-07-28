@@ -45,6 +45,7 @@ class FiniteGamma(object):
   def alpha_xy():
     pass
 
+
 class TightBinding(object):
   def __init__(self, t, kx, ky=1, kz=1):
     self.t = t
@@ -79,7 +80,82 @@ class TightBinding(object):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.hk = -2*self.t * ( np.cos(self.kmeshx*2*np.pi) )
 
+class Bisection(object):
+  def __init__(self, response, hk, ntarget):
+    self.response = response # FiniteGamma object
+    self.hk = hk # hamiltonian array
+    self.ntarget = ntarget # target occupation number
 
+
+  def findmu(self, mu_start = -100, mu_end = 100, threshold = 1e-7, progress=False):
+    mu_bisec = (mu_start+mu_end)/2
+    mu_save = mu_bisec # we save this
+
+    n_bisec = np.average(resp.occ(self.hk, mu_bisec))
+    n_start = np.average(resp.occ(self.hk, mu_start))
+    n_end = np.average(resp.occ(self.hk, mu_end))
+
+    iterator = 0
+
+    while ( np.abs(self.ntarget - n_bisec)  > threshold ):
+      n_bisec = np.average(resp.occ(tb.hk, mu_bisec))
+      mu_save = mu_bisec # we save this
+      # reasoning: if the target occupation is in the acceptable range
+      # we afterwards immediately adjust the mu again
+      # mu_save now represents the according mu for the target occupation
+      if progress:
+        print(iterator,': ',n_bisec, mu_save)
+      iterator += 1
+      if n_bisec > self.ntarget:
+        mu_end = mu_bisec
+        n_end = n_bisec
+        mu_bisec = (mu_bisec + mu_start)/2.0
+      else:
+        mu_start = mu_bisec
+        n_start = n_bisec
+        mu_bisec = (mu_end + mu_bisec)/2.0
+
+    return mu_save, n_bisec
+
+
+class Quantities(object):
+  def __init__(self, response, hk, mu):
+    self.response = response
+    self.hk = hk
+    self.mu = mu
+
+  def calculate(self, progress=False):
+    Hk_progress = self.hk.size//50
+    # now we can calculate some fancy properties
+    # zeta functions are not broadcastable unfortunately
+    sigma_xx_value = 0.0
+    sigma_xy_value = 0.0
+    alpha_xx_value = 0.0
+
+    for index, eki in np.ndenumerate(self.hk.flatten()):
+      if (progress and (np.mod(index[0],Hk_progress) == 0)):
+        print(index[0]/self.hk.size * 100,'%')
+      # polygamma functions
+      psi_1,psi_2,psi_3 = self.response.get_polygamma(eki,self.mu)
+      # quantities
+      sigma_xx_value += self.response.sigma_xx(eki,self.mu,psi_1, psi_2)
+      sigma_xy_value += self.response.sigma_xy(eki,self.mu,psi_1, psi_2, psi_3)
+      alpha_xx_value += self.response.alpha_xx(eki,self.mu,psi_1, psi_2)
+
+    sigma_xx_value = sigma_xx_value/self.hk.size
+    sigma_xy_value = sigma_xy_value/self.hk.size
+    alpha_xx_value = alpha_xx_value/self.hk.size
+
+    return sigma_xx_value, sigma_xy_value, alpha_xx_value
+
+
+
+
+
+
+
+print('Finite Gamma calculation program')
+print()
 
 # response object
 resp = FiniteGamma(Gamma = 0.1, beta = 10, Z = 0.5)
@@ -87,75 +163,17 @@ resp = FiniteGamma(Gamma = 0.1, beta = 10, Z = 0.5)
 tb = TightBinding(t = 0.1, kx=80, ky=80, kz=1)
 tb.create_hk()
 
-n_target = 0.3
-
-
-mu_start = -100
-mu_end = 100
-mu_bisec = (mu_end+mu_start)/2
-mu_save = mu_bisec
-mu_diff = mu_end-mu_start
-
-n_start = np.average(resp.occ(tb.hk,mu_start))
-n_end = np.average(resp.occ(tb.hk,mu_end))
-n_bisec = np.average(resp.occ(tb.hk,mu_bisec))
-
-iterator = 0
-
-
-print('Finite Gamma calculation program')
-print()
 print('Chemical potential search:')
-
-while ( np.abs(n_target - n_bisec)  > 1e-7 ):
-  n_bisec = np.average(resp.occ(tb.hk, mu_bisec))
-  mu_save = mu_bisec # we save this
-  # reasoning: if the target occupation is in the acceptable range
-  # we afterwards immediately adjust the mu again
-  # mu_save now represents the according mu for the target occupation
-  print(iterator,': ',n_bisec, mu_save)
-  iterator += 1
-  if n_bisec > n_target:
-    mu_end = mu_bisec
-    n_end = n_bisec
-    mu_bisec = (mu_bisec + mu_start)/2.0
-  else:
-    mu_start = mu_bisec
-    n_start = n_bisec
-    mu_bisec = (mu_end + mu_bisec)/2.0
+bisec = Bisection(resp, tb.hk, ntarget = 0.3)
+mu,occ = bisec.findmu()
 
 print()
-print('target occupation:', n_target)
-print('achieved occupation:', n_bisec)
-print('calculated chemical potential:', mu_save)
+print('target occupation:', bisec.ntarget)
+print('achieved occupation:', occ)
+print('calculated chemical potential:', mu)
 
-# for progress output
-Hk_progress = tb.hk.size/50
-# now we can calculate some fancy properties
-# zeta functions are not broadcastable unfortunately
-sigma_xx_value = 0.0
-sigma_xy_value = 0.0
-alpha_xx_value = 0.0
-print()
-print('Calculation progress of quantities:')
-for index, eki in np.ndenumerate(tb.hk.flatten()):
-  if (np.mod(index[0],Hk_progress) == 0):
-    print(index[0]/tb.hk.size * 100,'%')
-  # polygamma functions
-  psi_1,psi_2,psi_3 = resp.get_polygamma(eki,mu_save)
-  # quantities
-  sigma_xx_value += resp.sigma_xx(eki,mu_save,psi_1, psi_2)
-  sigma_xy_value += resp.sigma_xy(eki,mu_save,psi_1, psi_2, psi_3)
-  alpha_xx_value += resp.alpha_xx(eki,mu_save,psi_1, psi_2)
-
-sigma_xx_value = sigma_xx_value/tb.hk.size
-sigma_xy_value = sigma_xy_value/tb.hk.size
-alpha_xx_value = alpha_xx_value/tb.hk.size
-
-
-print('sigma_xx: ', sigma_xx_value)
-print('sigma_xy: ', sigma_xy_value)
-print('alpha_xx: ', alpha_xx_value)
+print('Physical properties:')
+quant = Quantities(resp, tb.hk, mu)
+quant.calculate(progress=True)
 
 print('Done.')
-print()
