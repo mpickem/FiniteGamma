@@ -49,10 +49,9 @@ class FiniteGamma(object):
     pass
 
 
-class TightBinding(object):
-  htype = 'Tightbinding'
-  def __init__(self, t, kx, ky=1, kz=1):
-    self.t = t
+class Hamiltonian(object):
+  htype = 'General'
+  def __init__(self, kx, ky, kz):
     self.kx = kx
     self.ky = ky
     self.kz = kz
@@ -67,7 +66,14 @@ class TightBinding(object):
     else:
       self.ndim = 3
 
-  def create_hk(self):
+class TightBinding(Hamiltonian):
+  htype = 'Tightbinding'
+  def __init__(self, t, kx, ky=1, kz=1):
+    Hamiltonian.__init__(self, kx, ky, kz)
+    self.t = t
+    self.__create_hk()
+
+  def __create_hk(self):
     if self.ndim == 1:
       self.__create_1d_hk()
     elif self.ndim == 2:
@@ -93,17 +99,14 @@ class TightBinding(object):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.hk = -2*self.t * ( np.cos(self.kmeshx*2*np.pi) )
 
-class Wannier(object):
+class Wannier(Hamiltonian):
   htype = 'Wannier'
   def __init__(self, fname, kx, ky, kz):
+    Hamiltonian.__init__(self, kx, ky, kz)
     self.fname = fname
-    self.kx = kx
-    self.ky = ky
-    self.kz = kz
-    self.hk = None
-    self.create_hk()
+    self.__create_hk()
 
-  def create_hk(self):
+  def __create_hk(self):
     with open(self.fname, 'r') as f:
       first_line = f.readline()
       nkp, ndim = map(int, first_line.split()[:2])
@@ -187,9 +190,8 @@ print()
 # wann = Wannier('SVO_k20.hk', 20, 20, 20)
 # sys.exit()
 
-# tight binding object
-tb = TightBinding(t = 0.1, kx=80, ky=1, kz=1)
-tb.create_hk()
+# tight binding object - automatically creates .hk array
+tb = TightBinding(t = 0.1, kx=80, ky=80, kz=1)
 
 beta_list = []
 mu = []
