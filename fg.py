@@ -80,12 +80,13 @@ class TightBinding(object):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.hk = -2*self.t * ( np.cos(self.kmeshx*2*np.pi) )
 
-class Bisection(object):
+class Combination(object):
   def __init__(self, response, hk, ntarget):
     self.response = response # FiniteGamma object
     self.hk = hk # hamiltonian array
     self.ntarget = ntarget # target occupation number
-
+    self.mu = None
+    self.nbisec = None
 
   def findmu(self, mu_start = -100, mu_end = 100, threshold = 1e-7, progress=False):
     mu_bisec = (mu_start+mu_end)/2
@@ -115,16 +116,10 @@ class Bisection(object):
         n_start = n_bisec
         mu_bisec = (mu_end + mu_bisec)/2.0
 
-    return mu_save, n_bisec
+    self.mu =  mu_save
+    self.nbisec = n_bisec
 
-
-class Quantities(object):
-  def __init__(self, response, hk, mu):
-    self.response = response
-    self.hk = hk
-    self.mu = mu
-
-  def calculate(self, progress=False):
+  def calcprop(self, progress=False):
     Hk_progress = self.hk.size//50
     # now we can calculate some fancy properties
     # zeta functions are not broadcastable unfortunately
@@ -150,30 +145,39 @@ class Quantities(object):
 
 
 
-
-
-
-
 print('Finite Gamma calculation program')
 print()
 
-# response object
-resp = FiniteGamma(Gamma = 0.1, beta = 10, Z = 0.5)
 # tight binding object
 tb = TightBinding(t = 0.1, kx=80, ky=80, kz=1)
 tb.create_hk()
 
-print('Chemical potential search:')
-bisec = Bisection(resp, tb.hk, ntarget = 0.3)
-mu,occ = bisec.findmu()
+beta_list = []
+mu = []
+sxx = []
+sxy = []
+axx = []
 
-print()
-print('target occupation:', bisec.ntarget)
-print('achieved occupation:', occ)
-print('calculated chemical potential:', mu)
+# temperature loop
+for i in xrange(1000,1,-1):
+  beta = i/10
+  beta_list.append(beta)
+  print(beta)
+  # response object
+  resp = FiniteGamma(Gamma = 0.1, beta = beta, Z = 0.7)
+  # class which combines the resp + hamiltonian
+  comb = Combination(resp, tb.hk, ntarget = 0.6)
 
-print('Physical properties:')
-quant = Quantities(resp, tb.hk, mu)
-quant.calculate(progress=True)
+  # find chemical potential
+  comb.findmu()
+  mu.append(comb.mu)
 
+  # calculatie properties
+  sxx_tmp, sxy_tmp, axx_tmp = comb.calcprop(progress=False)
+
+  sxx.append(sxx_tmp)
+  sxy.append(sxy_tmp)
+  axx.append(axx_tmp)
+
+np.savetxt('results.dat', np.c_[beta_list,mu,sxx,sxy,axx])
 print('Done.')
