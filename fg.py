@@ -5,6 +5,7 @@ import numpy as np
 from scipy.special import digamma
 from mpmath import zeta
 import sys
+import h5py
 
 class FiniteGamma(object):
   def __init__(self, Gamma, beta, Z):
@@ -41,8 +42,8 @@ class FiniteGamma(object):
 
   def sigma_xy(self,e,mu,psi_1,psi_2,psi_3):
     return (-self.Z**3*self.beta/(16*np.pi**4*self.Gamma**2)) * \
-           ( psi_3.real * self.beta**2 * self.Gamma**2 / 4 / np.pi**2 + \
-             psi_2.real * 3*self.beta*np.pi*self.Gamma / 2 / np.pi - \
+           ( - psi_3.real * self.beta**2 * self.Gamma**2 / 4 / np.pi**2 + \
+             psi_2.real * 3*self.beta*self.Gamma / 2 / np.pi - \
              psi_1.real * 3 )
 
   def alpha_xy(self,e,mu,psi_1,psi_2,psi_3):
@@ -197,13 +198,23 @@ def main():
   print('Finite Gamma calculation program')
   print()
 
+
+  # HDF5 output
+  hdf5 = h5py.File('results.hdf5','w')
+  # make this size creation automatic ....
+  mu_array = np.zeros((9,250), dtype=np.float64)
+  sxx_array = np.zeros_like(mu_array, dtype=np.float64)
+  sxy_array = np.zeros_like(mu_array, dtype=np.float64)
+  axx_array = np.zeros_like(mu_array, dtype=np.float64)
+  axy_array = np.zeros_like(mu_array, dtype=np.float64)
+
   # wann = Wannier('SVO_k20.hk', 20, 20, 20)
   # sys.exit()
 
   # tight binding object - automatically creates .hk array
-  tb = TightBinding(t = 2, kx=20, ky=20, kz=1)
+  tb = TightBinding(t = 1, kx=40, ky=40, kz=1)
 
-  for n in xrange(1,2):
+  for n in xrange(1,10): # from 1 to 9
     nparticles = n/10
 
     # for saving the values
@@ -211,10 +222,10 @@ def main():
     mu = []; sxx = []; sxy = []; axx = []; axy = []
 
     # temperature loop
-    for i in xrange(10,0,-1):
+    for i in xrange(1000,0,-4):
       beta = i
       beta_list.append(beta)
-      print('beta: ',beta)
+      print('particles: ', n, '  beta: ',beta)
       # response object
       resp = FiniteGamma(Gamma=0.3, beta=beta, Z=0.5)
       # class which combines the resp + hamiltonian
@@ -231,7 +242,19 @@ def main():
       axx.append(comb.axx)
       axy.append(comb.axy)
 
-    np.savetxt('results_{:02}.dat'.format(n), np.c_[beta_list,mu,sxx,sxy,axx,axy])
+    sxx_array[n-1,:] = np.array(sxx, dtype=np.float64)
+    sxy_array[n-1,:] = np.array(sxy, dtype=np.float64)
+    axx_array[n-1,:] = np.array(axx, dtype=np.float64)
+    axy_array[n-1,:] = np.array(axy, dtype=np.float64)
+
+    # np.savetxt('results_{:02}.dat'.format(n), np.c_[beta_list,mu,sxx,sxy,axx,axy])
+
+
+  hdf5['output/sxx'] = sxx_array
+  hdf5['output/sxy'] = sxy_array
+  hdf5['output/axx'] = axx_array
+  hdf5['output/axy'] = axy_array
+  hdf5['beta'] = np.array(beta_list)
 
 if __name__ == '__main__':
   try:
