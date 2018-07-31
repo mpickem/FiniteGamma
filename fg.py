@@ -200,7 +200,13 @@ def main():
 
 
   # HDF5 output
-  hdf5 = h5py.File('results.hdf5','w')
+  try:
+    hdf5 = h5py.File('results.hdf5','w-')
+  except IOError:
+    print('File already exists...')
+    print('Exiting.')
+    sys.exit(1)
+
   # make this size creation automatic ....
   mu_array = np.zeros((9,250), dtype=np.float64)
   sxx_array = np.zeros_like(mu_array, dtype=np.float64)

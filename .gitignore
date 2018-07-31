@@ -1,3 +1,4 @@
 *.hk
 *.pyc
 *.dat
+*.hdf5
