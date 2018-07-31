@@ -62,7 +62,7 @@ class Hamiltonian(object):
     self.ky = ky
     self.kz = kz
     self.nkp = kx*ky*kz
-    self.hk = None
+    self.hk = None # H(k)
     self.ndim = None
     self.__define_dim()
 
@@ -75,37 +75,46 @@ class Hamiltonian(object):
       self.ndim = 3
 
 class TightBinding(Hamiltonian):
+  ''' Create a tightbinding Hamiltonian with 1 2 or 3 dimensions
+      lattice constant is fixed to a=1
+  '''
   htype = 'Tightbinding'
   def __init__(self, t, kx, ky=1, kz=1):
     Hamiltonian.__init__(self, kx, ky, kz)
     self.t = t
-    self.__create_hk()
+    self.__create()
 
-  def __create_hk(self):
+  def __create(self):
     if self.ndim == 1:
-      self.__create_1d_hk()
+      self.__create_1d()
     elif self.ndim == 2:
-      self.__create_2d_hk()
+      self.__create_2d()
     else:
-      self.__create_3d_hk()
+      self.__create_3d()
 
-  def __create_3d_hk(self):
+  def __create_3d(self):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.kmeshy = np.linspace(0,1,self.ky,endpoint=False)
     self.kmeshz = np.linspace(0,1,self.kz,endpoint=False)
     self.hk = -2*self.t * ( np.cos(self.kmeshx*2*np.pi)[:,None,None] \
                           + np.cos(self.kmeshy*2*np.pi)[None,:,None] \
                           + np.cos(self.kmeshz*2*np.pi)[None,None,:] )
+    self.vkx =  2*self.t * np.sin(self.kmeshx*2*np.pi)
+    self.vky =  2*self.t * np.sin(self.kmeshy*2*np.pi)
+    self.vkz =  2*self.t * np.sin(self.kmeshz*2*np.pi)
 
-  def __create_2d_hk(self):
+  def __create_2d(self):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.kmeshy = np.linspace(0,1,self.ky,endpoint=False)
     self.hk = -2*self.t * ( np.cos(self.kmeshx*2*np.pi)[:,None] \
                           + np.cos(self.kmeshy*2*np.pi)[None,:] )
+    self.vkx =  2*self.t * np.sin(self.kmeshx*2*np.pi)
+    self.vky =  2*self.t * np.sin(self.kmeshy*2*np.pi)
 
-  def __create_1d_hk(self):
+  def __create_1d(self):
     self.kmeshx = np.linspace(0,1,self.kx,endpoint=False)
     self.hk = -2*self.t * ( np.cos(self.kmeshx*2*np.pi) )
+    self.vkx = 2*self.t * np.sin(self.kmeshx*2*np.pi)
 
 class Wannier(Hamiltonian):
   htype = 'Wannier'
@@ -131,10 +140,10 @@ class Wannier(Hamiltonian):
 
 
 class FGProblem(object):
-  def __init__(self, response, hk, ntarget):
-    self.resp = response # FiniteGamma object
-    self.hk = hk # hamiltonian array
-    self.ntarget = ntarget # target occupation number
+  def __init__(self, response, hamilton, ntarget):
+    self.resp = response     # FiniteGamma object
+    self.hamilton = hamilton # Hamiltonian object
+    self.ntarget = ntarget   # target occupation number
     self.mu = None
     self.nbisec = None
     self.sxx = None
@@ -146,14 +155,14 @@ class FGProblem(object):
     mu_bisec = (mu_start+mu_end)/2
     mu_save = mu_bisec # we save this
 
-    n_bisec = np.average(self.resp.occ(self.hk, mu_bisec))
-    n_start = np.average(self.resp.occ(self.hk, mu_start))
-    n_end = np.average(self.resp.occ(self.hk, mu_end))
+    n_bisec = np.average(self.resp.occ(self.hamilton.hk, mu_bisec))
+    n_start = np.average(self.resp.occ(self.hamilton.hk, mu_start))
+    n_end = np.average(self.resp.occ(self.hamilton.hk, mu_end))
 
     iterator = 0
 
     while ( (iterator < 250) and (np.abs(self.ntarget - n_bisec)  > threshold) ):
-      n_bisec = np.average(self.resp.occ(self.hk, mu_bisec))
+      n_bisec = np.average(self.resp.occ(self.hamilton.hk, mu_bisec))
       mu_save = mu_bisec # we save this
       # reasoning: if the target occupation is in the acceptable range
       # we afterwards immediately adjust the mu again
@@ -178,21 +187,31 @@ class FGProblem(object):
     self.mu =  mu_save
     self.nbisec = n_bisec
 
+  # this is for 2 dimensions and higher
   def calcprop(self, progress=False):
     sxx = sxy = axx = axy = 0.0
-    Hk_progress = self.hk.size/50
-    for index, eki in np.ndenumerate(self.hk.flatten()):
-      if (progress and (np.mod(index[0],Hk_progress) == 0)):
-        print(index[0]/self.hk.size * 100,'%')
+    Hk_progress = self.hamilton.hk.size/50
+    # flatten hk array and iterate over it
+    for index, eki in np.ndenumerate(self.hamilton.hk.flatten()):
+      # get the polygamma functions
       p1,p2,p3 = self.resp.get_polygamma(eki, self.mu)
-      sxx += self.resp.sigma_xx(eki, self.mu, p1, p2)
-      sxy += self.resp.sigma_xy(eki, self.mu, p1, p2, p3)
-      axx += self.resp.alpha_xx(eki, self.mu, p1, p2)
-      axy += self.resp.alpha_xy(eki, self.mu, p1, p2, p3)
-    self.sxx = sxx/self.hk.size
-    self.sxy = sxy/self.hk.size
-    self.axx = axx/self.hk.size
-    self.axy = axy/self.hk.size
+      # unravel the index again for the fermi velocities vkx,vky
+      ikx,iky = np.unravel_index(index, self.hamilton.hk.shape)[:2]
+      # calculate the properties with attached fermi velocities
+      sxx += self.resp.sigma_xx(eki, self.mu, p1, p2) * self.hamilton.vkx[ikx]**2
+      sxy += self.resp.sigma_xy(eki, self.mu, p1, p2, p3) * self.hamilton.vkx[ikx]*self.hamilton.vky[iky]
+      axx += self.resp.alpha_xx(eki, self.mu, p1, p2) * self.hamilton.vkx[ikx]**2
+      axy += self.resp.alpha_xy(eki, self.mu, p1, p2, p3) * self.hamilton.vkx[ikx]*self.hamilton.vky[iky]
+
+      # progress output
+      if (progress and (np.mod(index[0]+1,Hk_progress) == 0)):
+        print((index[0]+1)/self.hamilton.hk.size*100,'%')
+
+    # k summations always have to be normalized
+    self.sxx = sxx/self.hamilton.hk.size
+    self.sxy = sxy/self.hamilton.hk.size
+    self.axx = axx/self.hamilton.hk.size
+    self.axy = axy/self.hamilton.hk.size
 
 def main():
   print('Finite Gamma calculation program')
@@ -235,7 +254,7 @@ def main():
       # response object
       resp = FiniteGamma(Gamma=0.3, beta=beta, Z=0.5)
       # class which combines the resp + hamiltonian
-      comb = FGProblem(resp, tb.hk, ntarget = nparticles)
+      comb = FGProblem(resp, tb, ntarget = nparticles)
 
       # find chemical potential
       comb.findmu(mu_start=-10, mu_end=10, threshold=1e-8, progress=False)
